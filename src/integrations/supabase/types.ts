@@ -57,26 +57,38 @@ export type Database = {
       }
       job_applications: {
         Row: {
+          age: number | null
+          applicant_name: string | null
           cover_letter: string | null
           created_at: string
+          experience_years: number | null
           id: string
           job_id: string
+          resume_url: string | null
           status: string | null
           user_id: string
         }
         Insert: {
+          age?: number | null
+          applicant_name?: string | null
           cover_letter?: string | null
           created_at?: string
+          experience_years?: number | null
           id?: string
           job_id: string
+          resume_url?: string | null
           status?: string | null
           user_id: string
         }
         Update: {
+          age?: number | null
+          applicant_name?: string | null
           cover_letter?: string | null
           created_at?: string
+          experience_years?: number | null
           id?: string
           job_id?: string
+          resume_url?: string | null
           status?: string | null
           user_id?: string
         }
@@ -123,9 +135,11 @@ export type Database = {
           is_active: boolean | null
           job_type: string | null
           location: string | null
+          minimum_experience: number | null
           requirements: string | null
           salary_range: string | null
           title: string
+          user_id: string | null
         }
         Insert: {
           company_id: string
@@ -135,9 +149,11 @@ export type Database = {
           is_active?: boolean | null
           job_type?: string | null
           location?: string | null
+          minimum_experience?: number | null
           requirements?: string | null
           salary_range?: string | null
           title: string
+          user_id?: string | null
         }
         Update: {
           company_id?: string
@@ -147,9 +163,11 @@ export type Database = {
           is_active?: boolean | null
           job_type?: string | null
           location?: string | null
+          minimum_experience?: number | null
           requirements?: string | null
           salary_range?: string | null
           title?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -160,6 +178,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -187,7 +229,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_job_owner: {
+        Args: { _job_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       user_role: "job_seeker" | "employer"
