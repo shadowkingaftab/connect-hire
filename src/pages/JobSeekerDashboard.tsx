@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import JobApplicationForm from '@/components/JobApplicationForm';
 import { 
   Monitor, Heart, DollarSign, GraduationCap, Megaphone, Factory,
   ArrowLeft, MapPin, Briefcase, LogOut, Building2, ChevronRight
@@ -52,6 +53,8 @@ export default function JobSeekerDashboard() {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [appliedJobs, setAppliedJobs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [applicationFormOpen, setApplicationFormOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   
   const { user, role, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -130,22 +133,14 @@ export default function JobSeekerDashboard() {
     }
   };
 
-  const handleApply = async (jobId: string) => {
-    if (!user) return;
+  const handleApply = (job: Job) => {
+    setSelectedJob(job);
+    setApplicationFormOpen(true);
+  };
 
-    const { error } = await supabase
-      .from('job_applications')
-      .insert({ job_id: jobId, user_id: user.id });
-
-    if (error) {
-      if (error.code === '23505') {
-        toast({ variant: 'destructive', title: 'Already Applied', description: 'You have already applied for this job' });
-      } else {
-        toast({ variant: 'destructive', title: 'Error', description: 'Failed to submit application' });
-      }
-    } else {
-      setAppliedJobs(prev => new Set([...prev, jobId]));
-      toast({ title: 'Application Submitted!', description: 'Your application has been sent to the employer' });
+  const handleApplicationSuccess = () => {
+    if (selectedJob) {
+      setAppliedJobs(prev => new Set([...prev, selectedJob.id]));
     }
   };
 
@@ -349,7 +344,7 @@ export default function JobSeekerDashboard() {
                           </div>
                         </div>
                         <Button 
-                          onClick={() => handleApply(job.id)}
+                          onClick={() => handleApply(job)}
                           disabled={appliedJobs.has(job.id)}
                           className="border-2 border-foreground shadow-sm hover:shadow-md shrink-0"
                         >
@@ -378,6 +373,16 @@ export default function JobSeekerDashboard() {
           </>
         )}
       </main>
+
+      {selectedJob && (
+        <JobApplicationForm
+          open={applicationFormOpen}
+          onOpenChange={setApplicationFormOpen}
+          jobId={selectedJob.id}
+          jobTitle={selectedJob.title}
+          onSuccess={handleApplicationSuccess}
+        />
+      )}
     </div>
   );
 }
