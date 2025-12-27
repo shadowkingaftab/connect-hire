@@ -58,6 +58,7 @@ export type Database = {
       job_applications: {
         Row: {
           age: number | null
+          applicant_email: string | null
           applicant_name: string | null
           cover_letter: string | null
           created_at: string
@@ -70,6 +71,7 @@ export type Database = {
         }
         Insert: {
           age?: number | null
+          applicant_email?: string | null
           applicant_name?: string | null
           cover_letter?: string | null
           created_at?: string
@@ -82,6 +84,7 @@ export type Database = {
         }
         Update: {
           age?: number | null
+          applicant_email?: string | null
           applicant_name?: string | null
           cover_letter?: string | null
           created_at?: string

@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -17,7 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, User, Calendar, Briefcase, ExternalLink } from 'lucide-react';
+import { FileText, User, Calendar, Briefcase, ExternalLink, Mail, Filter, Loader2 } from 'lucide-react';
 
 interface Job {
   id: string;
@@ -28,6 +30,7 @@ interface Job {
 interface Applicant {
   id: string;
   applicant_name: string | null;
+  applicant_email: string | null;
   age: number | null;
   experience_years: number | null;
   resume_url: string | null;
@@ -50,7 +53,14 @@ export default function ViewApplicants({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>('');
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  
+  // Filtering state
+  const [minExperience, setMinExperience] = useState<string>('');
+  const [maxExperience, setMaxExperience] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
     if (open && user) {
@@ -79,7 +89,7 @@ export default function ViewApplicants({
     
     const { data, error } = await supabase
       .from('job_applications')
-      .select('id, applicant_name, age, experience_years, resume_url, status, created_at')
+      .select('id, applicant_name, applicant_email, age, experience_years, resume_url, status, created_at')
       .eq('job_id', jobId)
       .order('created_at', { ascending: false });
     
@@ -98,8 +108,34 @@ export default function ViewApplicants({
 
   const handleJobSelect = (jobId: string) => {
     setSelectedJobId(jobId);
+    const job = jobs.find(j => j.id === jobId) || null;
+    setSelectedJob(job);
     fetchApplicants(jobId);
+    // Reset filters when changing jobs
+    setMinExperience('');
+    setMaxExperience('');
+    setStatusFilter('all');
   };
+
+  // Real-time filtering
+  const filteredApplicants = useMemo(() => {
+    return applicants.filter(applicant => {
+      // Experience filter
+      const exp = applicant.experience_years ?? 0;
+      const minExp = minExperience ? parseInt(minExperience) : 0;
+      const maxExp = maxExperience ? parseInt(maxExperience) : Infinity;
+      
+      if (exp < minExp || exp > maxExp) return false;
+      
+      // Status filter
+      if (statusFilter !== 'all') {
+        const applicantStatus = applicant.status || 'pending';
+        if (applicantStatus !== statusFilter) return false;
+      }
+      
+      return true;
+    });
+  }, [applicants, minExperience, maxExperience, statusFilter]);
 
   const updateApplicationStatus = async (applicationId: string, status: string) => {
     const { error } = await supabase
@@ -126,13 +162,70 @@ export default function ViewApplicants({
     }
   };
 
+  const sendEmailAndUpdateStatus = async (applicant: Applicant, status: 'shortlisted' | 'rejected' | 'selected') => {
+    if (!applicant.applicant_email) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Applicant email not available',
+      });
+      return;
+    }
+
+    if (!selectedJob) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Job information not available',
+      });
+      return;
+    }
+
+    setSendingEmail(applicant.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('send-applicant-email', {
+        body: {
+          applicationId: applicant.id,
+          applicantName: applicant.applicant_name || 'Applicant',
+          applicantEmail: applicant.applicant_email,
+          jobTitle: selectedJob.title,
+          status,
+          companyName: selectedJob.company?.name || 'Our Company',
+        },
+      });
+
+      if (error) throw error;
+
+      setApplicants(prev =>
+        prev.map(app =>
+          app.id === applicant.id ? { ...app, status } : app
+        )
+      );
+
+      toast({
+        title: 'Email Sent!',
+        description: `${status.charAt(0).toUpperCase() + status.slice(1)} email sent to ${applicant.applicant_name}`,
+      });
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Email Failed',
+        description: 'Failed to send email. Please check your Resend configuration.',
+      });
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
   const getStatusColor = (status: string | null) => {
     switch (status) {
-      case 'reviewed':
+      case 'shortlisted':
         return 'bg-blue-100 text-blue-800';
-      case 'interviewed':
+      case 'reviewed':
         return 'bg-purple-100 text-purple-800';
-      case 'hired':
+      case 'selected':
         return 'bg-green-100 text-green-800';
       case 'rejected':
         return 'bg-red-100 text-red-800';
@@ -143,14 +236,14 @@ export default function ViewApplicants({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl border-2 border-foreground max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl border-2 border-foreground max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>View Applicants</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Select Job Posting</label>
+            <Label>Select Job Posting</Label>
             <Select value={selectedJobId} onValueChange={handleJobSelect}>
               <SelectTrigger className="border-2">
                 <SelectValue placeholder="Choose a job to view applicants" />
@@ -165,6 +258,57 @@ export default function ViewApplicants({
             </Select>
           </div>
 
+          {/* Filters */}
+          {selectedJobId && (
+            <Card className="border-2 border-foreground bg-secondary/30">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Filter className="h-4 w-4" />
+                  <span className="text-sm font-medium">Filter Applicants</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Min Experience (years)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={minExperience}
+                      onChange={(e) => setMinExperience(e.target.value)}
+                      placeholder="0"
+                      className="border-2 h-9"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Experience (years)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={maxExperience}
+                      onChange={(e) => setMaxExperience(e.target.value)}
+                      placeholder="Any"
+                      className="border-2 h-9"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="border-2 h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="shortlisted">Shortlisted</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="selected">Selected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {loading && (
             <div className="text-center py-8 text-muted-foreground">
               Loading applicants...
@@ -177,13 +321,19 @@ export default function ViewApplicants({
             </Card>
           )}
 
-          {!loading && applicants.length > 0 && (
+          {!loading && selectedJobId && applicants.length > 0 && filteredApplicants.length === 0 && (
+            <Card className="border-2 border-foreground p-8 text-center">
+              <p className="text-muted-foreground">No applicants match your filters.</p>
+            </Card>
+          )}
+
+          {!loading && filteredApplicants.length > 0 && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                {applicants.length} applicant{applicants.length !== 1 ? 's' : ''}
+                Showing {filteredApplicants.length} of {applicants.length} applicant{applicants.length !== 1 ? 's' : ''}
               </p>
               
-              {applicants.map((applicant) => (
+              {filteredApplicants.map((applicant) => (
                 <Card key={applicant.id} className="border-2 border-foreground">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
@@ -195,7 +345,13 @@ export default function ViewApplicants({
                           <CardTitle className="text-lg">
                             {applicant.applicant_name || 'Unknown'}
                           </CardTitle>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-muted-foreground">
+                            {applicant.applicant_email && (
+                              <span className="flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {applicant.applicant_email}
+                              </span>
+                            )}
                             {applicant.age && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
@@ -217,7 +373,7 @@ export default function ViewApplicants({
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                    <div className="flex flex-col gap-4">
                       {applicant.resume_url && (
                         <a
                           href={applicant.resume_url}
@@ -231,36 +387,58 @@ export default function ViewApplicants({
                         </a>
                       )}
                       
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => updateApplicationStatus(applicant.id, 'reviewed')}
                           className="border-2"
+                          disabled={sendingEmail === applicant.id}
                         >
                           Mark Reviewed
                         </Button>
+                        
+                        {/* Email Actions */}
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => updateApplicationStatus(applicant.id, 'interviewed')}
-                          className="border-2"
+                          onClick={() => sendEmailAndUpdateStatus(applicant, 'shortlisted')}
+                          className="border-2 border-foreground bg-blue-600 hover:bg-blue-700"
+                          disabled={sendingEmail === applicant.id || !applicant.applicant_email}
                         >
-                          Interviewed
+                          {sendingEmail === applicant.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Mail className="h-4 w-4 mr-1" />
+                          )}
+                          Shortlist
                         </Button>
+                        
                         <Button
                           size="sm"
-                          onClick={() => updateApplicationStatus(applicant.id, 'hired')}
+                          onClick={() => sendEmailAndUpdateStatus(applicant, 'selected')}
                           className="border-2 border-foreground bg-green-600 hover:bg-green-700"
+                          disabled={sendingEmail === applicant.id || !applicant.applicant_email}
                         >
-                          Hire
+                          {sendingEmail === applicant.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Mail className="h-4 w-4 mr-1" />
+                          )}
+                          Select & Email
                         </Button>
+                        
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => updateApplicationStatus(applicant.id, 'rejected')}
+                          onClick={() => sendEmailAndUpdateStatus(applicant, 'rejected')}
+                          disabled={sendingEmail === applicant.id || !applicant.applicant_email}
                         >
-                          Reject
+                          {sendingEmail === applicant.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Mail className="h-4 w-4 mr-1" />
+                          )}
+                          Reject & Email
                         </Button>
                       </div>
                     </div>
