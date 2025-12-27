@@ -34,6 +34,7 @@ export default function JobApplicationForm({
   
   const [loading, setLoading] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [age, setAge] = useState('');
   const [experienceYears, setExperienceYears] = useState('');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -55,6 +56,11 @@ export default function JobApplicationForm({
     
     if (data?.full_name) {
       setFullName(data.full_name);
+    }
+    
+    // Set email from user auth
+    if (user.email) {
+      setEmail(user.email);
     }
   };
 
@@ -110,6 +116,7 @@ export default function JobApplicationForm({
           job_id: jobId,
           user_id: user.id,
           applicant_name: fullName,
+          applicant_email: email,
           age: parseInt(age),
           experience_years: parseInt(experienceYears),
           resume_url: urlData.publicUrl,
@@ -168,6 +175,19 @@ export default function JobApplicationForm({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Enter your full name"
+              required
+              className="border-2"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
               required
               className="border-2"
             />
