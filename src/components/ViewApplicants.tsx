@@ -20,7 +20,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, User, Calendar, Briefcase, ExternalLink, Filter, Loader2, Send, Mail } from 'lucide-react';
+import { FileText, User, Calendar, Briefcase, ExternalLink, Filter, Loader2, Mail, ArrowRightCircle } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface Job {
   id: string;
@@ -62,9 +68,9 @@ export default function ViewApplicants({
   const [maxExperience, setMaxExperience] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Send to Boss modal state
-  const [sendToBossOpen, setSendToBossOpen] = useState(false);
-  const [bossEmail, setBossEmail] = useState('');
+  // Forward to manager modal state
+  const [forwardModalOpen, setForwardModalOpen] = useState(false);
+  const [managerEmail, setManagerEmail] = useState('');
   const [optionalMessage, setOptionalMessage] = useState('');
   const [sendingToBoss, setSendingToBoss] = useState(false);
 
@@ -183,12 +189,12 @@ export default function ViewApplicants({
     }
   };
 
-  const handleSendToBoss = async () => {
-    if (!bossEmail.trim()) {
+  const handleForwardCandidates = async () => {
+    if (!managerEmail.trim()) {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Boss email is required',
+        title: 'Required Field',
+        description: 'Reporting manager email is required',
       });
       return;
     }
@@ -248,7 +254,7 @@ export default function ViewApplicants({
 
       const { error } = await supabase.functions.invoke('send-to-boss', {
         body: {
-          bossEmail: bossEmail.trim(),
+          bossEmail: managerEmail.trim(),
           jobTitle: selectedJob.title,
           companyName: selectedJob.company?.name || 'Our Company',
           optionalMessage: optionalMessage.trim() || undefined,
@@ -259,19 +265,19 @@ export default function ViewApplicants({
       if (error) throw error;
 
       toast({
-        title: 'Email Sent!',
-        description: `Shortlisted candidates sent to ${bossEmail}`,
+        title: 'Forwarded Successfully',
+        description: 'Shortlisted candidates have been successfully forwarded to the reporting manager.',
       });
 
-      setSendToBossOpen(false);
-      setBossEmail('');
+      setForwardModalOpen(false);
+      setManagerEmail('');
       setOptionalMessage('');
     } catch (error) {
-      console.error('Error sending to boss:', error);
+      console.error('Error forwarding candidates:', error);
       toast({
         variant: 'destructive',
-        title: 'Failed to Send',
-        description: 'Could not send email to boss. Please check Resend configuration.',
+        title: 'Forward Failed',
+        description: 'Unable to forward candidates. Please try again.',
       });
     } finally {
       setSendingToBoss(false);
@@ -354,16 +360,25 @@ export default function ViewApplicants({
               </Card>
             )}
 
-            {/* Send to Boss Button */}
+            {/* Forward Shortlist Button */}
             {selectedJobId && filteredApplicants.length > 0 && (
               <div className="flex justify-end">
-                <Button
-                  onClick={() => setSendToBossOpen(true)}
-                  className="border-2 border-foreground bg-primary"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Send to Boss ({shortlistedApplicants.length > 0 ? shortlistedApplicants.length : filteredApplicants.length} candidates)
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={() => setForwardModalOpen(true)}
+                        className="border-2 border-foreground"
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        Forward Shortlist ({shortlistedApplicants.length > 0 ? shortlistedApplicants.length : filteredApplicants.length})
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Forward shortlisted candidates to the reporting manager</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             )}
 
@@ -494,11 +509,11 @@ export default function ViewApplicants({
         </DialogContent>
       </Dialog>
 
-      {/* Send to Boss Modal */}
-      <Dialog open={sendToBossOpen} onOpenChange={setSendToBossOpen}>
+      {/* Forward Candidates Modal */}
+      <Dialog open={forwardModalOpen} onOpenChange={setForwardModalOpen}>
         <DialogContent className="sm:max-w-md border-2 border-foreground">
           <DialogHeader>
-            <DialogTitle>Send Shortlisted Candidates to Boss</DialogTitle>
+            <DialogTitle>Forward Shortlisted Candidates</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
@@ -519,46 +534,55 @@ export default function ViewApplicants({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="bossEmail">Boss Email *</Label>
+              <Label htmlFor="managerEmail">Reporting Manager Email *</Label>
               <Input
-                id="bossEmail"
+                id="managerEmail"
                 type="email"
-                placeholder="boss@company.com"
-                value={bossEmail}
-                onChange={(e) => setBossEmail(e.target.value)}
+                placeholder="manager@company.com"
+                value={managerEmail}
+                onChange={(e) => setManagerEmail(e.target.value)}
                 className="border-2"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="optionalMessage">Optional Message</Label>
+              <Label htmlFor="optionalMessage">Message to Manager (optional)</Label>
               <Textarea
                 id="optionalMessage"
-                placeholder="Add a note for the boss..."
+                placeholder="Add a note for the manager..."
                 value={optionalMessage}
                 onChange={(e) => setOptionalMessage(e.target.value)}
                 className="border-2 min-h-[100px]"
               />
             </div>
 
-            <Button
-              onClick={handleSendToBoss}
-              disabled={sendingToBoss || !bossEmail.trim()}
-              className="w-full border-2 border-foreground"
-            >
-              {sendingToBoss ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Email to Boss
-                </>
-              )}
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setForwardModalOpen(false)}
+                className="flex-1 border-2"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleForwardCandidates}
+                disabled={sendingToBoss || !managerEmail.trim()}
+                className="flex-1 border-2 border-foreground"
+              >
+                {sendingToBoss ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Forwarding...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRightCircle className="h-4 w-4 mr-2" />
+                    Forward Candidates
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
